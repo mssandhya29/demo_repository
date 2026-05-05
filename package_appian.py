@@ -1,26 +1,36 @@
 import json
 import zipfile
+import uuid
 
 def create_appian_package(interface_name: str, sail_code: str, output_path: str = None):
     if output_path is None:
         output_path = f"{interface_name}.zip"
 
+    object_uuid = str(uuid.uuid4())
+
+    # _manifest.json — matches Appian export schema
     manifest = {
         "appianPackageExportFormatVersion": "1",
         "objects": [
             {
                 "type": "Interface",
-                "name": interface_name
+                "name": interface_name,
+                "uuid": object_uuid
             }
         ]
     }
 
+    # interface/<Name>.json — Appian interface object schema
     interface_obj = {
         "entity": {
+            "id": object_uuid,
+            "name": interface_name,
             "type": "Interface",
-            "name": interface_name
+            "uuid": object_uuid
         },
-        "sailCode": sail_code
+        "contents": {
+            "sailCode": sail_code
+        }
     }
 
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -31,11 +41,10 @@ def create_appian_package(interface_name: str, sail_code: str, output_path: str 
         )
 
     print(f"Package created: {output_path}")
-    return output_path
+    return output_path, object_uuid
 
 
-SAIL_CODE = r"""
-a!localVariables(
+SAIL_CODE = r"""a!localVariables(
   local!firstName: null,
   local!lastName: null,
   local!email: null,
@@ -52,6 +61,7 @@ a!localVariables(
   local!showCancelDialog: false,
   if(
     local!showConfirmation,
+    /* ── Confirmation screen ── */
     a!formLayout(
       titleBar: a!headerTemplateSimple(title: "Request Submitted"),
       contents: {
@@ -80,7 +90,9 @@ a!localVariables(
                       labelPosition: "COLLAPSED",
                       value: {
                         a!richTextItem(text: "Submitted by: ", style: "STRONG"),
-                        a!richTextItem(text: a!defaultValue(local!firstName, "") & " " & a!defaultValue(local!lastName, ""))
+                        a!richTextItem(
+                          text: a!defaultValue(local!firstName, "") & " " & a!defaultValue(local!lastName, "")
+                        )
                       }
                     ),
                     a!richTextDisplayField(
@@ -95,6 +107,19 @@ a!localVariables(
                       value: {
                         a!richTextItem(text: "Priority: ", style: "STRONG"),
                         a!richTextItem(text: a!defaultValue(local!priority, ""))
+                      }
+                    ),
+                    a!richTextDisplayField(
+                      labelPosition: "COLLAPSED",
+                      value: {
+                        a!richTextItem(text: "Target Date: ", style: "STRONG"),
+                        a!richTextItem(
+                          text: if(
+                            a!isNullOrEmpty(local!targetDate),
+                            "Not specified",
+                            text(local!targetDate, "dd MMM yyyy")
+                          )
+                        )
                       }
                     )
                   },
@@ -137,6 +162,7 @@ a!localVariables(
         }
       )
     ),
+    /* ── Main intake form ── */
     a!formLayout(
       titleBar: a!headerTemplateSimple(title: "Intake Request Form"),
       contents: {
@@ -149,6 +175,7 @@ a!localVariables(
             a!columnLayout(
               width: if(a!isPageWidth({"DESKTOP", "DESKTOP_WIDE"}), "WIDE_PLUS", "AUTO"),
               contents: {
+                /* ── Section 1: Requester Information ── */
                 a!sectionLayout(
                   label: "Requester Information",
                   labelHeadingTag: "H2",
@@ -237,8 +264,24 @@ a!localVariables(
                     a!dropdownField(
                       label: "Department",
                       labelPosition: "ABOVE",
-                      choiceLabels: {"Engineering", "Marketing", "Sales", "HR", "Finance", "Operations", "Other"},
-                      choiceValues: {"engineering", "marketing", "sales", "hr", "finance", "operations", "other"},
+                      choiceLabels: {
+                        "Engineering",
+                        "Marketing",
+                        "Sales",
+                        "HR",
+                        "Finance",
+                        "Operations",
+                        "Other"
+                      },
+                      choiceValues: {
+                        "engineering",
+                        "marketing",
+                        "sales",
+                        "hr",
+                        "finance",
+                        "operations",
+                        "other"
+                      },
                       value: local!department,
                       saveInto: local!department,
                       placeholder: "Select your department",
@@ -253,6 +296,7 @@ a!localVariables(
                   isCollapsible: false,
                   marginBelow: "STANDARD"
                 ),
+                /* ── Section 2: Request Details ── */
                 a!sectionLayout(
                   label: "Request Details",
                   labelHeadingTag: "H2",
@@ -264,8 +308,24 @@ a!localVariables(
                             a!dropdownField(
                               label: "Request Type",
                               labelPosition: "ABOVE",
-                              choiceLabels: {"New Feature", "Bug Fix", "Access Request", "Data Request", "Process Change", "Infrastructure", "Other"},
-                              choiceValues: {"new_feature", "bug_fix", "access_request", "data_request", "process_change", "infrastructure", "other"},
+                              choiceLabels: {
+                                "New Feature",
+                                "Bug Fix",
+                                "Access Request",
+                                "Data Request",
+                                "Process Change",
+                                "Infrastructure",
+                                "Other"
+                              },
+                              choiceValues: {
+                                "new_feature",
+                                "bug_fix",
+                                "access_request",
+                                "data_request",
+                                "process_change",
+                                "infrastructure",
+                                "other"
+                              },
                               value: local!requestType,
                               saveInto: local!requestType,
                               placeholder: "Select request type",
@@ -367,6 +427,7 @@ a!localVariables(
                   isCollapsible: false,
                   marginBelow: "STANDARD"
                 ),
+                /* ── Section 3: Attachments ── */
                 a!sectionLayout(
                   label: "Attachments",
                   labelHeadingTag: "H2",
@@ -375,7 +436,10 @@ a!localVariables(
                       label: "Supporting Documents",
                       labelPosition: "ABOVE",
                       instructions: "Attach any relevant documents, screenshots, or specifications",
-                      target: a!documentsFolder(cons!INTAKE_DOCUMENTS_FOLDER),
+                      target: a!documentsFolder(
+                        /* Replace with your documents folder constant */
+                        cons!INTAKE_DOCUMENTS_FOLDER
+                      ),
                       saveInto: local!attachments,
                       buttonStyle: "SECONDARY",
                       validations: {}
@@ -384,6 +448,7 @@ a!localVariables(
                   isCollapsible: true,
                   marginBelow: "STANDARD"
                 ),
+                /* ── Section 4: Priority Guidance ── */
                 a!sectionLayout(
                   label: "Priority Guidance",
                   labelHeadingTag: "H2",
@@ -396,8 +461,10 @@ a!localVariables(
                             a!richTextDisplayField(
                               labelPosition: "COLLAPSED",
                               value: {
-                                a!richTextItem(text: "Low", style: "STRONG", color: "STANDARD"),
-                                a!richTextItem(text: char(10) & "Nice-to-have improvements with no time constraint.")
+                                a!richTextItem(text: "Low", style: "STRONG"),
+                                a!richTextItem(
+                                  text: char(10) & "Nice-to-have improvements with no time constraint."
+                                )
                               }
                             )
                           },
@@ -411,8 +478,10 @@ a!localVariables(
                             a!richTextDisplayField(
                               labelPosition: "COLLAPSED",
                               value: {
-                                a!richTextItem(text: "Medium", style: "STRONG", color: "STANDARD"),
-                                a!richTextItem(text: char(10) & "Important but not time-critical. Standard queue.")
+                                a!richTextItem(text: "Medium", style: "STRONG"),
+                                a!richTextItem(
+                                  text: char(10) & "Important but not time-critical. Standard queue."
+                                )
                               }
                             )
                           },
@@ -427,7 +496,9 @@ a!localVariables(
                               labelPosition: "COLLAPSED",
                               value: {
                                 a!richTextItem(text: "High", style: "STRONG", color: "ACCENT"),
-                                a!richTextItem(text: char(10) & "Significant business impact. Needs prompt attention.")
+                                a!richTextItem(
+                                  text: char(10) & "Significant business impact. Needs prompt attention."
+                                )
                               }
                             )
                           },
@@ -442,7 +513,9 @@ a!localVariables(
                               labelPosition: "COLLAPSED",
                               value: {
                                 a!richTextItem(text: "Critical", style: "STRONG", color: "NEGATIVE"),
-                                a!richTextItem(text: char(10) & "System down or major business blocker. Immediate escalation.")
+                                a!richTextItem(
+                                  text: char(10) & "System down or major business blocker. Immediate escalation."
+                                )
                               }
                             )
                           },
@@ -506,11 +579,17 @@ a!localVariables(
       )
     )
   )
-)
-""".strip()
+)"""
 
-create_appian_package(
+output_zip, pkg_uuid = create_appian_package(
     interface_name="IntakeRequestForm",
     sail_code=SAIL_CODE,
     output_path="/home/user/demo_repository/IntakeRequestForm.zip"
 )
+
+# Also write raw SAIL as plain text fallback
+with open("/home/user/demo_repository/IntakeRequestForm.sail", "w") as f:
+    f.write(SAIL_CODE)
+
+print(f"UUID used: {pkg_uuid}")
+print("Plain SAIL file written: IntakeRequestForm.sail")
