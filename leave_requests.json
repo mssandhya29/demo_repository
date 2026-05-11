@@ -1,0 +1,11 @@
+[
+  {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "employee_name": "Sabari",
+    "start_date": "2026-05-01",
+    "end_date": "2026-07-03",
+    "reason": "",
+    "status": "Pending",
+    "submitted_at": "2026-05-11T00:00:00Z"
+  }
+]

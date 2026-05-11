@@ -22,6 +22,8 @@ import os
 import json
 import base64
 import anthropic
+import uuid
+from datetime import datetime
 
 import httpx
 import certifi
@@ -131,13 +133,13 @@ def count_objects_with_claude(
         block.text for block in message.content if block.type == "text"
     )
     raw = raw.strip()
-if raw.startswith("```json"):
-    raw = raw[7:]
-elif raw.startswith("```"):
-    raw = raw[3:]
-if raw.endswith("```"):
-    raw = raw[:-3]
-raw = raw.strip()
+    if raw.startswith("```json"):
+        raw = raw[7:]
+    elif raw.startswith("```"):
+        raw = raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    raw = raw.strip()
     return json.loads(raw)
 
 
@@ -188,6 +190,62 @@ def count():
         return jsonify({"error": f"Anthropic API error: {e}"}), 502
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Leave Request helpers
+# ---------------------------------------------------------------------------
+
+LEAVE_REQUESTS_FILE = os.path.join(os.path.dirname(__file__), "leave_requests.json")
+
+
+def load_leave_requests() -> list:
+    if not os.path.exists(LEAVE_REQUESTS_FILE):
+        return []
+    with open(LEAVE_REQUESTS_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_leave_requests(requests: list) -> None:
+    with open(LEAVE_REQUESTS_FILE, "w") as f:
+        json.dump(requests, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Leave Request routes
+# ---------------------------------------------------------------------------
+
+@app.route("/leave", methods=["GET"])
+def leave_page():
+    return send_from_directory(".", "leave.html")
+
+
+@app.route("/api/leaves", methods=["GET"])
+def list_leaves():
+    return jsonify(load_leave_requests())
+
+
+@app.route("/api/leaves", methods=["POST"])
+def submit_leave():
+    data = request.get_json(force=True)
+    required = {"employee_name", "start_date", "end_date"}
+    if not required.issubset(data):
+        return jsonify({"error": f"Missing fields: {required - data.keys()}"}), 400
+
+    leave = {
+        "id": str(uuid.uuid4()),
+        "employee_name": data["employee_name"],
+        "start_date": data["start_date"],
+        "end_date": data["end_date"],
+        "reason": data.get("reason", ""),
+        "status": data.get("status", "Pending"),
+        "submitted_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+    requests_list = load_leave_requests()
+    requests_list.append(leave)
+    save_leave_requests(requests_list)
+    return jsonify(leave), 201
 
 
 # ---------------------------------------------------------------------------
